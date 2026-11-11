@@ -1,0 +1,4 @@
+# Optional embedding backend for BrandGuard AI
+# Enable by setting environment variable EMBEDDINGS=on
+fastembed>=0.4
+
