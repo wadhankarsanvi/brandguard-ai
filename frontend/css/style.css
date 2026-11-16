@@ -1,4 +1,4 @@
-:root{
+:root, :root[data-theme="light"]{
   --bg:#f4f6f3;--panel:#fff;--ink:#16241d;--muted:#5d6b63;--line:#e1e6e0;--forest:#1b3a2d;--green:#2e7d32;--green-soft:#e6f2e7;
   --amber:#f5a623;--crit:#b3261e;--crit-bg:#fdecea;--high:#c2570c;--high-bg:#fff0e3;--med:#8a6d00;--med-bg:#fff7d6;--minor:#3d5a80;--minor-bg:#e8eff8;
   --radius:12px;--shadow:0 1px 2px rgba(20,40,30,.06),0 6px 20px rgba(20,40,30,.05);

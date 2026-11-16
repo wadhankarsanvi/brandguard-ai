@@ -209,6 +209,47 @@ function skeletonHtml() {
     <div class="card mt"><div class="skeleton-box skeleton-card-body"></div></div>
   </div>`;
 }
+function bindShellEvents() {
+  updateThemeBtn();
+  const themeBtn = $('#theme-btn');
+  if (themeBtn) {
+    themeBtn.onclick = e => {
+      e.stopPropagation();
+      toggleTheme();
+    };
+  }
+  const bell = $('#nbell');
+  if (bell) {
+    bell.onclick = e => {
+      e.stopPropagation();
+      toggleNotifications();
+    };
+  }
+  const readAll = $('#notif-read-all');
+  if (readAll) {
+    readAll.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      readAllNotifications();
+    };
+  }
+  const menuBtn = $('#menu-btn');
+  if (menuBtn) {
+    menuBtn.onclick = e => {
+      e.stopPropagation();
+      toggleMobileMenu();
+    };
+  }
+  const outBtn = $('#out');
+  if (outBtn) outBtn.onclick = logout;
+}
+
+document.addEventListener('click', e => {
+  if (S.notifOpen && !e.target.closest('#ndrop') && !e.target.closest('#nbell')) {
+    toggleNotifications(false);
+  }
+});
+
 async function render(active, loader) {
   const app = $('#app');
   const main = app ? app.querySelector('main') : null;
@@ -216,13 +257,12 @@ async function render(active, loader) {
     main.innerHTML = skeletonHtml();
   } else if (app && S.token) {
     app.innerHTML = shell(active, skeletonHtml());
-    updateThemeBtn();
+    bindShellEvents();
   }
   try {
     const { html, bind } = await loader();
     app.innerHTML = shell(active, html);
-    updateThemeBtn();
-    $('#out') && ($('#out').onclick = logout);
+    bindShellEvents();
     bind && bind(app);
     window.scrollTo(0, 0);
   } catch (e) {
@@ -232,9 +272,8 @@ async function render(active, loader) {
       <p class="muted mb-16">${esc(e.message || 'An unexpected error occurred.')}</p>
       <button class="btn sm" id="err-retry">Try again</button>
     </div>`);
-    updateThemeBtn();
+    bindShellEvents();
     $('#err-retry') && ($('#err-retry').onclick = () => route());
-    $('#out') && ($('#out').onclick = logout);
   }
 }
 
@@ -270,7 +309,7 @@ async function dashboard() {
   const a = await api('/analytics'), k = a.kpis, mx = Math.max(1, ...a.by_rule.map(r => r.count));
   const cm = Math.max(1, ...a.by_category.map(c => c.n));
   return {
-    html: `<div class="head"><div><h1>Brand health</h1><p>${S.user.role === 'creator' ? 'Your compliance at a glance.' : 'Governance telemetry across all teams.'}</p></div><a class="btn" href="#/new">Check new content</a></div>
+    html: `<div class="head"><div><h1>Brand health</h1><p>${S.user.role === 'creator' ? 'Your compliance overview.' : 'Compliance overview across all teams.'}</p></div><a class="btn" href="#/new">Check new content</a></div>
     <div class="grid g4"><div class="card kpi"><div class="v">${k.submissions}</div><div class="l">Assets checked</div></div>
       <div class="card kpi"><div class="v">${k.avg_score ?? '–'}</div><div class="l">Average compliance score</div></div>
       <div class="card kpi"><div class="v">${k.approved}<span class="muted kpi-sub"> / ${k.in_review} in review</span></div><div class="l">Approved & published</div></div>
@@ -279,7 +318,7 @@ async function dashboard() {
       <div class="card"><h2>Compliance trend</h2><div class="mt">${trendSvg(a.trend)}</div><h2 class="mt">Issues by category</h2>${a.by_category.map(c => hbar(c.category || 'other', c.n, cm)).join('')}</div></div>
     <div class="grid g2 mt"><div class="card"><h2>Team scorecard</h2><div class="table-wrap"><table><tr><th>Team</th><th>Assets</th><th>Approved</th><th>Avg score</th></tr>
       ${a.by_team.map(t => `<tr><td>${esc(t.team)}</td><td>${t.submissions}</td><td>${t.approved}</td><td><b>${t.avg_score ?? '–'}</b></td></tr>`).join('')}</table></div></div>
-      <div class="card"><h2>Guideline feedback loop</h2><p class="muted small mt-4">Rules that many creators trip over <i>and</i> often dismiss are probably unclear — fix the guideline, not the people.</p>
+      <div class="card"><h2>Ambiguous guidelines</h2><p class="muted small mt-4">Frequently dismissed rules that may need clarification or revised wording.</p>
       ${a.ambiguous_guidelines.length ? a.ambiguous_guidelines.map(g => `<div class="issue medium"><b>${esc(g.name)}</b> <span class="chip">ambiguity ${g.ambiguity}</span>
         <div class="small muted">${g.count} hits · ${g.creators} creators · ${g.dismissed} dismissed</div><div class="small">${esc(g.hint)}</div></div>`).join('')
         : '<div class="empty small">No ambiguous guidelines detected yet. As creators dismiss flags, unclear rules surface here.</div>'}</div></div>`
@@ -473,10 +512,10 @@ async function detail(id) {
       ${s.status === 'approved' ? '<span class="small text-green"><b>✔ Approved & published</b> — cryptographic badge issued (see Review tab).</span>' : ''}</div></div>
     <div class="tabs">${tabList.map(t => `<button data-tab="${t[0]}" class="${TAB === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>
     <div>${{ analysis, pages, review, history, audit }[TAB]}</div>`,
-    bind: r => bindDetail(r, d, id)
+    bind: r => bindDetail(r, d, id, editable)
   };
 }
-function bindDetail(r, d, id) {
+function bindDetail(r, d, id, editable) {
   const s = d.submission, reload = () => route();
   $$('[data-tab]', r).forEach(b => b.onclick = () => { TAB = b.dataset.tab; reload(); });
   if (s.image_url && TAB === 'analysis') drawImage(d);
@@ -568,8 +607,8 @@ async function kb() {
   ]);
   const mgr = S.user && S.user.role === 'manager';
   return {
-    html: `<div class="head"><div><h1>Knowledge base</h1><p>Stage 1 · Guidelines, product facts and glossaries are chunked and indexed. Claims are verified against this corpus.</p></div></div>
-    <div class="grid g2"><div class="card"><h2>Indexed documents</h2><div class="table-wrap"><table class="mt"><tr><th>Document</th><th>Type</th><th>Chunks</th><th></th></tr>
+    html: `<div class="head"><div><h1>Knowledge base</h1><p>Approved brand guidelines, product facts, color palette, and logos.</p></div></div>
+    <div class="grid g2"><div class="card"><h2>Brand documents</h2><div class="table-wrap"><table class="mt"><tr><th>Document</th><th>Type</th><th>Sections</th><th></th></tr>
       ${docs.map(d => `<tr><td><b>${esc(d.title)}</b><div class="small muted">${fmt(d.created_at)}</div></td><td><span class="chip">${esc(d.doc_type)}</span></td><td>${d.chunks}</td>
       <td>${mgr ? `<button class="btn sm ghost" data-del="${d.id}">Delete</button>` : ''}</td></tr>`).join('')}</table></div>
       <h3 class="mt">Brand palette</h3>
@@ -608,15 +647,15 @@ async function kb() {
       </form>
       ` : ''}
     </div>
-    <div class="grid"><div class="card"><h2>Retrieval tester</h2><p class="muted small">See exactly which passages the RAG engine retrieves for a claim.</p><div class="row"><input type="text" id="q" placeholder="e.g. keeps drinks cold for 36 hours" class="input-flex"><button class="btn" id="qs">Search</button></div><div id="qr" class="mt"></div></div>
-    ${mgr ? `<div class="card"><h2>Ingest a document</h2><form id="uf"><label>Title</label><input type="text" id="ut"><label>Type</label><select id="uty"><option value="guideline">Brand guideline</option><option value="product_facts">Product facts</option><option value="glossary">Terminology glossary</option><option value="legal">Legal / disclaimers</option></select>
-      <label>File (.pdf .md .txt) or paste text</label><input type="file" id="uf1" accept=".pdf,.md,.txt"><textarea id="utx" rows="4" class="mt-8" placeholder="Or paste text…"></textarea><button class="btn mt">Ingest</button></form></div>` : ''}</div></div>`,
+    <div class="grid"><div class="card"><h2>Search guidelines</h2><p class="muted small">Search approved guidelines and fact sheets.</p><div class="row"><input type="text" id="q" placeholder="e.g. keeps drinks cold for 36 hours" class="input-flex"><button class="btn" id="qs">Search</button></div><div id="qr" class="mt"></div></div>
+    ${mgr ? `<div class="card"><h2>Upload document</h2><form id="uf"><label>Title</label><input type="text" id="ut"><label>Type</label><select id="uty"><option value="guideline">Brand guideline</option><option value="product_facts">Product facts</option><option value="glossary">Terminology glossary</option><option value="legal">Legal / disclaimers</option></select>
+      <label>File (.pdf .md .txt) or paste text</label><input type="file" id="uf1" accept=".pdf,.md,.txt"><textarea id="utx" rows="4" class="mt-8" placeholder="Or paste text…"></textarea><button class="btn mt">Upload</button></form></div>` : ''}</div></div>`,
     bind: r => {
       $('#qs', r).onclick = async () => { const q = $('#q').value; if (!q) return; const h = await act(() => api('/kb/search?q=' + encodeURIComponent(q))); if (h) $('#qr').innerHTML = h.map(x => `<div class="cite"><b>${esc(x.doc_title)}</b> · ${esc(x.heading || '')} <span class="chip">score ${x.score}</span><q>${esc(x.text.slice(0, 260))}</q></div>`).join('') || '<div class="empty small">No relevant passage found.</div>'; };
       $$('[data-del]', r).forEach(b => b.onclick = async () => { if (confirm('Delete this document and its index entries?')) { await act(() => api('/kb/documents/' + b.dataset.del, { method: 'DELETE' }), 'Deleted'); route(); } });
       $('#uf', r) && ($('#uf', r).onsubmit = async e => {
         e.preventDefault(); const fd = new FormData(); fd.append('title', $('#ut').value); fd.append('doc_type', $('#uty').value); fd.append('text', $('#utx').value); if ($('#uf1').files[0]) fd.append('file', $('#uf1').files[0]);
-        const x = await act(() => api('/kb/documents', { form: fd })); if (x) { toast(`Indexed ${x.chunks} chunks`); route(); }
+        const x = await act(() => api('/kb/documents', { form: fd })); if (x) { toast(`Document uploaded (${x.chunks} sections)`); route(); }
       });
       $$('.pal-color', r).forEach(inp => inp.oninput = e => {
         const row = e.target.closest('.pal-item');
