@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS rules(
   id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT UNIQUE NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
   kind TEXT NOT NULL, pattern TEXT NOT NULL, preferred TEXT DEFAULT '', severity TEXT NOT NULL DEFAULT 'medium',
   description TEXT DEFAULT '', source TEXT DEFAULT '', case_sensitive INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
+CREATE TABLE IF NOT EXISTS rule_versions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL, pattern TEXT NOT NULL, preferred TEXT DEFAULT '', severity TEXT NOT NULL DEFAULT 'medium',
+  description TEXT DEFAULT '', active INTEGER DEFAULT 1, changed_by INTEGER, change_reason TEXT, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS submissions(
   id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, kind TEXT NOT NULL, content_text TEXT DEFAULT '',
@@ -112,6 +116,13 @@ def init_db():
   message TEXT NOT NULL, read INTEGER DEFAULT 0, created_at TEXT NOT NULL)""")
             except Exception:
                 pass
+            try:
+                cur.execute("""CREATE TABLE IF NOT EXISTS rule_versions(
+  id SERIAL PRIMARY KEY, rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL, pattern TEXT NOT NULL, preferred TEXT DEFAULT '', severity TEXT NOT NULL DEFAULT 'medium',
+  description TEXT DEFAULT '', active INTEGER DEFAULT 1, changed_by INTEGER, change_reason TEXT, created_at TEXT NOT NULL)""")
+            except Exception:
+                pass
         conn.commit()
     else:
         conn.executescript(SCHEMA)
@@ -128,6 +139,13 @@ def init_db():
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   submission_id INTEGER REFERENCES submissions(id) ON DELETE CASCADE,
   message TEXT NOT NULL, read INTEGER DEFAULT 0, created_at TEXT NOT NULL)""")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("""CREATE TABLE IF NOT EXISTS rule_versions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL, pattern TEXT NOT NULL, preferred TEXT DEFAULT '', severity TEXT NOT NULL DEFAULT 'medium',
+  description TEXT DEFAULT '', active INTEGER DEFAULT 1, changed_by INTEGER, change_reason TEXT, created_at TEXT NOT NULL)""")
         except sqlite3.OperationalError:
             pass
         conn.commit()

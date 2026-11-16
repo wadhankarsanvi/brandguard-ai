@@ -87,10 +87,32 @@ def _issue(rule_key, category, severity, message, source, quote, bbox=None, sugg
             "citation": {"source": source, "quote": quote, "doc_title": None, "score": None}, "bbox": bbox}
 
 
+def extract_image_text(path):
+    """Extract visible text from an image via pytesseract (if available) or Anthropic Vision."""
+    try:
+        import pytesseract
+        txt = pytesseract.image_to_string(Image.open(path))
+        if txt and txt.strip():
+            return txt.strip()
+    except Exception:
+        pass
+    if llm.enabled():
+        txt = llm.extract_image_text(path)
+        if txt and txt.strip():
+            return txt.strip()
+    return ""
+
+
 def analyze_image(path, alt_text, copy_text, palette, min_contrast=4.5, min_width=800):
     rgb = load_rgb(path)
     h, w = rgb.shape[:2]
     issues, metrics = [], {"width": w, "height": h}
+
+    # ---- OCR text extraction
+    ocr_text = extract_image_text(path)
+    metrics["ocr_text"] = ocr_text
+    if ocr_text:
+        metrics["ocr_words"] = len(ocr_text.split())
 
     # ---- alt text (WCAG 1.1.1)
     alt = (alt_text or "").strip()

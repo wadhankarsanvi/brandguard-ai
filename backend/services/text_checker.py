@@ -7,7 +7,7 @@ auto-fix suggestion and a citation (guideline quote retrieved from the knowledge
 import math
 import re
 
-from backend.services import rag
+from backend.services import llm, rag
 
 SEV_WEIGHT = {"critical": 20, "high": 12, "medium": 6, "minor": 2}
 
@@ -147,6 +147,20 @@ class Checker:
         if not hits:
             return {"supported": False, "score": 0, "reason": "no approved source mentions this.", "evidence": None}
         best = hits[0]
+
+        # 1. Semantic NLI verification (if AI key is configured)
+        if llm.enabled():
+            sem = llm.verify_claim_semantic(sentence, best["text"])
+            if sem and isinstance(sem, dict) and "supported" in sem:
+                return {
+                    "supported": bool(sem.get("supported")),
+                    "score": best["score"],
+                    "reason": sem.get("reason", "supported" if sem.get("supported") else "approved sources do not substantiate it."),
+                    "semantic": True,
+                    "evidence": {"doc_title": best["doc_title"], "heading": best["heading"], "text": best["text"], "score": best["score"]}
+                }
+
+        # 2. Deterministic lexical verification (exact numbers + keyword coverage)
         words = rag.content_words(sentence) - {"verdant"}
         cover = len(words & rag.content_words(best["text"])) / max(1, len(words))
         nums = re.findall(r"\d+(?:\.\d+)?", sentence)

@@ -13,6 +13,7 @@ from backend.common import (
     audit,
     check_login_rate_limit,
     make_token,
+    now,
     record_failed_login,
     record_successful_login,
     require_auth,
@@ -41,6 +42,35 @@ def login():
     record_successful_login(email)
     audit(u, "auth.login")
     return {"token": make_token(u), "user": {k: u[k] for k in ("id", "email", "name", "role", "team")}}
+
+
+@bp.post("/auth/register")
+def register():
+    if not getattr(config, "ALLOW_REGISTRATION", True):
+        raise ApiError("Self-registration is disabled", 403)
+    d = request.get_json(silent=True) or {}
+    email = (d.get("email") or "").strip().lower()
+    name = (d.get("name") or "").strip()
+    password = d.get("password") or ""
+    role = d.get("role", "creator")
+    team = (d.get("team") or "Marketing").strip()
+    if role not in ("creator", "manager", "legal"):
+        role = "creator"
+    if not email or "@" not in email:
+        raise ApiError("Valid email required", 400)
+    if not name:
+        raise ApiError("Name required", 400)
+    if len(password) < 6:
+        raise ApiError("Password must be at least 6 characters", 400)
+    if db.query("SELECT id FROM users WHERE email=?", (email,), one=True):
+        raise ApiError("User with this email already exists", 400)
+    uid = db.execute(
+        "INSERT INTO users(email,name,role,team,password_hash) VALUES(?,?,?,?,?)",
+        (email, name, role, team, generate_password_hash(password))
+    )
+    user = {"id": uid, "email": email, "name": name, "role": role, "team": team}
+    audit(user, "auth.register")
+    return {"token": make_token(user), "user": user}, 201
 
 
 @bp.post("/auth/change-password")
@@ -217,6 +247,13 @@ def rules_add():
              d.get("description", ""), d.get("source", ""), int(bool(d.get("case_sensitive")))))
     except Exception:
         raise ApiError("A rule with this key already exists")
+    try:
+        db.execute(
+            "INSERT INTO rule_versions(rule_id,version,pattern,preferred,severity,description,active,changed_by,change_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (rid, 1, d["pattern"], d.get("preferred", ""), d.get("severity", "medium"), d.get("description", ""), 1, g.user["id"], "Initial rule creation", now())
+        )
+    except Exception:
+        pass
     audit(g.user, "rule.created", "rule", rid, d["key"])
     return {"id": rid}, 201
 
@@ -224,14 +261,60 @@ def rules_add():
 @bp.put("/rules/<int:rid>")
 @require_auth("manager")
 def rules_update(rid):
+    cur_rule = db.query("SELECT * FROM rules WHERE id=?", (rid,), one=True)
+    if not cur_rule:
+        raise ApiError("Rule not found", 404)
     d = request.get_json(force=True)
     allowed = ("name", "pattern", "preferred", "severity", "description", "source", "active", "category")
     sets = [(k, d[k]) for k in allowed if k in d]
     if not sets:
         raise ApiError("Nothing to update")
     db.execute(f"UPDATE rules SET {', '.join(k + '=?' for k, _ in sets)} WHERE id=?", [v for _, v in sets] + [rid])
+    
+    # Record version snapshot
+    try:
+        v_row = db.query("SELECT COALESCE(MAX(version),0) m FROM rule_versions WHERE rule_id=?", (rid,), one=True)
+        next_ver = (v_row["m"] if v_row else 0) + 1
+        updated = db.query("SELECT * FROM rules WHERE id=?", (rid,), one=True)
+        db.execute(
+            "INSERT INTO rule_versions(rule_id,version,pattern,preferred,severity,description,active,changed_by,change_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (rid, next_ver, updated["pattern"], updated.get("preferred", ""), updated.get("severity", "medium"),
+             updated.get("description", ""), updated.get("active", 1), g.user["id"], d.get("reason", "Rule updated"), now())
+        )
+    except Exception:
+        pass
     audit(g.user, "rule.updated", "rule", rid, json.dumps(dict(sets)))
     return {"ok": True}
+
+
+@bp.get("/rules/<int:rid>/versions")
+@require_auth("manager")
+def rules_versions(rid):
+    versions = db.query(
+        "SELECT rv.*, u.name as author_name FROM rule_versions rv LEFT JOIN users u ON u.id=rv.changed_by WHERE rv.rule_id=? ORDER BY rv.version DESC",
+        (rid,)
+    )
+    return jsonify(versions)
+
+
+@bp.post("/rules/<int:rid>/rollback/<int:ver>")
+@require_auth("manager")
+def rules_rollback(rid, ver):
+    target = db.query("SELECT * FROM rule_versions WHERE rule_id=? AND version=?", (rid, ver), one=True)
+    if not target:
+        raise ApiError("Rule version not found", 404)
+    db.execute(
+        "UPDATE rules SET pattern=?, preferred=?, severity=?, description=?, active=? WHERE id=?",
+        (target["pattern"], target["preferred"], target["severity"], target["description"], target["active"], rid)
+    )
+    v_row = db.query("SELECT COALESCE(MAX(version), 0) m FROM rule_versions WHERE rule_id=?", (rid,), one=True)
+    next_ver = (v_row["m"] if v_row else 0) + 1
+    db.execute(
+        "INSERT INTO rule_versions(rule_id,version,pattern,preferred,severity,description,active,changed_by,change_reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (rid, next_ver, target["pattern"], target["preferred"], target["severity"], target["description"], target["active"], g.user["id"], f"Rollback to v{ver}", now())
+    )
+    audit(g.user, "rule.rollback", "rule", rid, f"Rolled back to v{ver}")
+    return {"ok": True, "rolled_back_to": ver, "new_version": next_ver}
 
 
 @bp.delete("/rules/<int:rid>")

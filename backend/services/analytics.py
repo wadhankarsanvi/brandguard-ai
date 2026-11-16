@@ -4,6 +4,7 @@ A guideline is flagged as ambiguous when many different creators trip over it an
 flags are dismissed as wrong/irrelevant — a signal that the rule (not the creators) needs rewording.
 """
 from backend import db
+from backend.services import llm
 
 
 BUILTIN = {
@@ -37,8 +38,28 @@ def build(user):
                 "creators": r["creators"], "dismissed": r["dismissed"], "ambiguity": amb}
         by_rule.append(item)
         if r["occ"] >= 3 and r["creators"] >= 2 and amb >= 0.5:
-            ambiguous.append({**item, "hint": "Many creators hit this rule and a high share of flags are dismissed. "
-                              "Clarify the wording or add examples to the guideline."})
+            dismissed_matches = [
+                row["match"] for row in db.query(
+                    f"SELECT DISTINCT match FROM issues WHERE rule_key=? AND status='dismissed' AND submission_id IN ({ph}) LIMIT 5",
+                    [r["rule_key"]] + ids
+                ) if row.get("match")
+            ]
+            rule_obj = db.query("SELECT * FROM rules WHERE key=?", (r["rule_key"],), one=True)
+            reword_suggestion = None
+            if rule_obj:
+                if llm.enabled():
+                    reword_suggestion = llm.suggest_rule_reword(
+                        rule_obj["name"], rule_obj["pattern"], rule_obj.get("description", ""), dismissed_matches
+                    )
+                if not reword_suggestion and dismissed_matches:
+                    sample_str = ", ".join(f'“{m}”' for m in dismissed_matches[:3])
+                    reword_suggestion = (
+                        f"Frequently dismissed on {sample_str}. Consider carving out explicit exceptions in the guideline "
+                        f"or refining the regex pattern to avoid flagging approved contexts."
+                    )
+            hint = ("Many creators hit this rule and a high share of flags are dismissed. "
+                    "Clarify the wording or add examples to the guideline.")
+            ambiguous.append({**item, "hint": hint, "reword_suggestion": reword_suggestion, "sample_dismissed": dismissed_matches})
     by_rule.sort(key=lambda x: -x["count"])
     ambiguous.sort(key=lambda x: -x["ambiguity"])
 

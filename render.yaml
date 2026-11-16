@@ -25,5 +25,9 @@ services:
         value: BrandGuard@123
       - key: SEED_DEMO_DATA
         value: "true"
+      - key: ALLOW_REGISTRATION
+        value: "true"
+      - key: OCR_ENABLED
+        value: "true"
       - key: ANTHROPIC_API_KEY
         sync: false

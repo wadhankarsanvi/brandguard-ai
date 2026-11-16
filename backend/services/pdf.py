@@ -24,6 +24,24 @@ def extract_text(path):
         page_map.append({"page": idx, "start": start_offset, "end": end_offset})
     text = "\n\n".join(parts)
     if not text.strip():
+        # Scanned PDF: attempt OCR on rendered page images
+        import tempfile
+        from backend.services import image_checker
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            rendered = render_pages(path, tmp_dir)
+            for idx, rname in enumerate(rendered, start=1):
+                page_img = Path(tmp_dir) / rname
+                ocr_txt = image_checker.extract_image_text(page_img)
+                if ocr_txt.strip():
+                    if parts:
+                        current_offset += 2
+                    start_offset = current_offset
+                    parts.append(ocr_txt)
+                    current_offset += len(ocr_txt)
+                    page_map.append({"page": idx, "start": start_offset, "end": current_offset})
+            text = "\n\n".join(parts)
+
+    if not text.strip():
         raise ValueError("No extractable text in this PDF (it may be a scan). Upload a text PDF or paste the copy.")
     return text, page_map
 

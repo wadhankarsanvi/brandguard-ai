@@ -144,11 +144,13 @@ brandguard/
 
 ---
 
-## 5. Status — what is done and what is left
+## 5. Status & Production Enhancements
 
-**Working (~65%)**: auth & roles, KB ingestion + retrieval, rule engine, text + image analysis, claim verification with citations,
-fix/dismiss/rewrite, revisions & diff, comments, two-tier approval, signed badges, analytics with ambiguity detection, audit log, responsive UI, tests, Render config.
-
-**Natural next steps**: Postgres + pgvector (persistence/scale), real embeddings, per-guideline version history, email/Slack notifications,
-in-canvas editing of image annotations (Fabric.js), PDF page-level highlights, video frames, Figma/WordPress plugins, SSO instead of demo accounts,
-rate limiting, background jobs for heavy files.
+**Implemented Features**:
+- **Auth & Access Control**: RBAC (Creator, Brand Manager, Legal), JWT session tokens, login rate limiting (5 attempts / 15m), self-registration (`POST /api/auth/register`), and password management.
+- **Rule Governance & Versioning**: Regex rule matching, auto-fix replacements, full rule version history tracking (`GET /api/rules/:id/versions`), and one-click rollback (`POST /api/rules/:id/rollback/:ver`).
+- **Hybrid RAG & Claim Verification**: Heading-aware document chunking, TF-IDF + optional FastEmbed dense vector retrieval, lexical exact-number matching with guideline citations, and semantic NLI verification via Claude when `ANTHROPIC_API_KEY` is configured.
+- **Multimodal Vision & OCR Engine**: Brand palette CIELAB ΔE calculation (k-means), WCAG 2.1 AA text contrast region analysis with color auto-suggestions, logo clear-space template matching, and OCR transcription for visual copy and scanned PDFs via Vision LLM and Tesseract.
+- **Collaborative Review & Publishing**: Creator → Manager → Legal two-tier approval workflow, tamper-evident HMAC-SHA256 compliance badges bound to SHA-256 content hashes, public `/api/verify` verification, threaded comments, and word-level revision diffing.
+- **Closed-Loop Analytics & Ambiguity Feedback**: KPI dashboards, team scorecards, and ambiguity detection with automated guideline rewording suggestions based on creator dismissals.
+- **Automated CI/CD**: GitHub Actions CI workflow running 34 automated unit and integration tests on Python 3.12. Render Blueprint deployment (`render.yaml`) with PostgreSQL database integration.

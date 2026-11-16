@@ -17,6 +17,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
 TOKEN_TTL_HOURS = int(os.getenv("TOKEN_TTL_HOURS", "12"))
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "BrandGuard@123")
 SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "true").lower() == "true"
+ALLOW_REGISTRATION = os.getenv("ALLOW_REGISTRATION", "true").lower() in ("true", "1", "yes")
+OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # Optional embedding backend (fastembed BAAI/bge-small-en-v1.5)
 EMBEDDINGS = os.getenv("EMBEDDINGS", "off").lower() in ("on", "true", "1")
